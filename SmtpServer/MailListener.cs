@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.IO;
 using System.Text.RegularExpressions;
+using SmtpServer.Helpers;
 
 namespace SmtpServer
 {
@@ -25,18 +26,33 @@ namespace SmtpServer
         const string CONTENT_TRANSFER_ENCODING = "Content-Transfer-Encoding: ";
 
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MailListener"/> class.
+        /// </summary>
+        /// <param name="server">The server.</param>
+        /// <param name="localaddr">The localaddr.</param>
+        /// <param name="port">The port.</param>
         public MailListener(SMTPServer server, IPAddress localaddr, int port)
             : base(localaddr, port)
         {
             owner = server;
         }
 
+        /// <summary>
+        /// Starts listening for incoming connection requests.
+        /// </summary>
+        /// <PermissionSet>
+        ///   <IPermission class="System.Security.Permissions.EnvironmentPermission, mscorlib, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" version="1" Unrestricted="true" />
+        ///   <IPermission class="System.Security.Permissions.FileIOPermission, mscorlib, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" version="1" Unrestricted="true" />
+        ///   <IPermission class="System.Security.Permissions.SecurityPermission, mscorlib, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" version="1" Unrestricted="true" />
+        ///   <IPermission class="System.Net.SocketPermission, System, Version=2.0.3600.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" version="1" Unrestricted="true" />
+        ///   </PermissionSet>
         new public void Start()
         {
             base.Start();
 
             client = AcceptTcpClient();
-            client.ReceiveTimeout = 5000;
+            client.ReceiveTimeout = SettingsHelper.GetIntOrDefault("ReceiveTimeout", 5000);
             stream = client.GetStream();
             reader = new System.IO.StreamReader(stream);
             writer = new System.IO.StreamWriter(stream);
@@ -47,6 +63,9 @@ namespace SmtpServer
             thread.Start();
         }
 
+        /// <summary>
+        /// Runs the thread.
+        /// </summary>
         protected void RunThread()
         {
             string line = null;
@@ -146,6 +165,11 @@ namespace SmtpServer
             }
         }
 
+        /// <summary>
+        /// Decodes the quoted printable.
+        /// </summary>
+        /// <param name="input">The input.</param>
+        /// <returns></returns>
         private string DecodeQuotedPrintable(string input)
         {
             var occurences = new Regex(@"(=[0-9A-Z][0-9A-Z])+", RegexOptions.Multiline);
@@ -164,6 +188,15 @@ namespace SmtpServer
             return input.Replace("=\r\n", "");
         }
 
+        /// <summary>
+        /// Writes the message.
+        /// </summary>
+        /// <param name="from">From.</param>
+        /// <param name="to">To.</param>
+        /// <param name="subject">The subject.</param>
+        /// <param name="message">The message.</param>
+        /// <param name="contentType">Type of the content.</param>
+        /// <param name="transferEncoding">The transfer encoding.</param>
         private void WriteMessage(string from, string to, string subject, string message, string contentType, string transferEncoding)
         {
             if (transferEncoding == "quoted-printable")
@@ -173,8 +206,8 @@ namespace SmtpServer
 
             if (OutputToFile)
             {
-                string header = string.Format("<strong>FROM: </strong>{0}<br/><strong>TO: </strong>{1}<br/><strong>SUBJECT: </strong>{2}<br/><br/>",
-                    new object[] { from, to, subject });
+                string header = string.Format("<strong>FROM: </strong>{0}<br/><strong>TO: </strong>{1}<br/><strong>SUBJECT: </strong>{2}<br/><strong>TYPE: </strong>{3}<br/><strong>ENCODING: </strong>{4}<br/><br/>",
+                    new object[] { from, to, subject, contentType, transferEncoding });
                 string docText = string.Format("<html><body>{0}{1}</body></html>", header, message);
 
                 // Create a file to write to.
@@ -185,21 +218,33 @@ namespace SmtpServer
                 }
             }
 
-            Console.Error.WriteLine("===============================================================================");
-            Console.Error.WriteLine("Received ­email");
-            Console.Error.WriteLine("Type: " + contentType);
-            Console.Error.WriteLine("Encoding: " + transferEncoding);
-            Console.Error.WriteLine("From: " + from);
-            Console.Error.WriteLine("To: " + to);
-            Console.Error.WriteLine("Subject: " + subject);
-            Console.Error.WriteLine("-------------------------------------------------------------------------------");
-            Console.Error.WriteLine(message);
-            Console.Error.WriteLine("===============================================================================");
-            Console.Error.WriteLine("");
+            //Console.Error.WriteLine("===============================================================================");
+            //Console.Error.WriteLine("Received ­email");
+            //Console.Error.WriteLine("Type: " + contentType);
+            //Console.Error.WriteLine("Encoding: " + transferEncoding);
+            //Console.Error.WriteLine("From: " + from);
+            //Console.Error.WriteLine("To: " + to);
+            //Console.Error.WriteLine("Subject: " + subject);
+            //Console.Error.WriteLine("-------------------------------------------------------------------------------");
+            //Console.Error.WriteLine(message);
+            //Console.Error.WriteLine("===============================================================================");
+            //Console.Error.WriteLine("");
         }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether [output to file].
+        /// </summary>
+        /// <value>
+        ///   <c>true</c> if [output to file]; otherwise, <c>false</c>.
+        /// </value>
         public bool OutputToFile { get; set; }
 
+        /// <summary>
+        /// Gets a value indicating whether [is thread alive].
+        /// </summary>
+        /// <value>
+        ///   <c>true</c> if [is thread alive]; otherwise, <c>false</c>.
+        /// </value>
         public bool IsThreadAlive
         {
             get { return thread.IsAlive; }

@@ -6,8 +6,8 @@ using System.Resources;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("SmtpServer")]
-[assembly: AssemblyDescription("Simple SMTP Server")]
+[assembly: AssemblyTitle("Simple SMTP Proxy Server")]
+[assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Trivadis AG")]
 [assembly: AssemblyProduct("Thomas Bandixen's SmtpServer")]
