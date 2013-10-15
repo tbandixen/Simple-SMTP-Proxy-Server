@@ -217,18 +217,6 @@ namespace SmtpServer
                     sw.Write(docText);
                 }
             }
-
-            //Console.Error.WriteLine("===============================================================================");
-            //Console.Error.WriteLine("Received ­email");
-            //Console.Error.WriteLine("Type: " + contentType);
-            //Console.Error.WriteLine("Encoding: " + transferEncoding);
-            //Console.Error.WriteLine("From: " + from);
-            //Console.Error.WriteLine("To: " + to);
-            //Console.Error.WriteLine("Subject: " + subject);
-            //Console.Error.WriteLine("-------------------------------------------------------------------------------");
-            //Console.Error.WriteLine(message);
-            //Console.Error.WriteLine("===============================================================================");
-            //Console.Error.WriteLine("");
         }
 
         /// <summary>
