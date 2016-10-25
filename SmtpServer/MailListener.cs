@@ -1,11 +1,12 @@
-﻿using System;
+﻿using OpenPop.Mime;
+using SmtpServer.Helpers;
+using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.IO;
 using System.Text.RegularExpressions;
-using SmtpServer.Helpers;
+using System.Threading;
 
 namespace SmtpServer
 {
@@ -59,8 +60,60 @@ namespace SmtpServer
             writer.NewLine = "\r\n";
             writer.AutoFlush = true;
 
-            thread = new System.Threading.Thread(new ThreadStart(RunThread));
+            thread = new Thread(new ThreadStart(RunThread));
             thread.Start();
+        }
+
+        public static byte[] ReadToEnd(System.IO.Stream stream)
+        {
+            long originalPosition = 0;
+
+            if (stream.CanSeek)
+            {
+                originalPosition = stream.Position;
+                stream.Position = 0;
+            }
+
+            try
+            {
+                byte[] readBuffer = new byte[4096];
+
+                int totalBytesRead = 0;
+                int bytesRead;
+
+                while ((bytesRead = stream.Read(readBuffer, totalBytesRead, readBuffer.Length - totalBytesRead)) > 0)
+                {
+                    totalBytesRead += bytesRead;
+
+                    if (totalBytesRead == readBuffer.Length)
+                    {
+                        int nextByte = stream.ReadByte();
+                        if (nextByte != -1)
+                        {
+                            byte[] temp = new byte[readBuffer.Length * 2];
+                            Buffer.BlockCopy(readBuffer, 0, temp, 0, readBuffer.Length);
+                            Buffer.SetByte(temp, totalBytesRead, (byte)nextByte);
+                            readBuffer = temp;
+                            totalBytesRead++;
+                        }
+                    }
+                }
+
+                byte[] buffer = readBuffer;
+                if (readBuffer.Length != totalBytesRead)
+                {
+                    buffer = new byte[totalBytesRead];
+                    Buffer.BlockCopy(readBuffer, 0, buffer, 0, totalBytesRead);
+                }
+                return buffer;
+            }
+            finally
+            {
+                if (stream.CanSeek)
+                {
+                    stream.Position = originalPosition;
+                }
+            }
         }
 
         /// <summary>
@@ -77,65 +130,40 @@ namespace SmtpServer
                 while (reader != null)
                 {
                     line = reader.ReadLine();
-                    Console.Error.WriteLine("Read line {0}", line);
+                    Console.Error.WriteLine($"Read line {line}");
 
                     switch (line)
                     {
                         case "DATA":
                             writer.WriteLine("354 Start input, end data with <CRLF>.<CRLF>");
-                            StringBuilder data = new StringBuilder();
-                            String subject = "";
-                            string from = "";
-                            string to = "";
-                            string mimeVersion = "";
-                            string date = "";
-                            string contentType = "";
-                            string contentTransferEncoding = "";
+                            StringBuilder allLines = new StringBuilder();
 
                             line = reader.ReadLine();
 
                             while (line != null && line != ".")
                             {
-                                if (line.StartsWith(SUBJECT))
-                                {
-                                    subject = line.Substring(SUBJECT.Length);
-                                }
-                                else if (line.StartsWith(FROM))
-                                {
-                                    from = line.Substring(FROM.Length);
-                                }
-                                else if (line.StartsWith(TO))
-                                {
-                                    to = line.Substring(TO.Length);
-                                }
-                                else if (line.StartsWith(MIME_VERSION))
-                                {
-                                    mimeVersion = line.Substring(MIME_VERSION.Length);
-                                }
-                                else if (line.StartsWith(DATE))
-                                {
-                                    date = line.Substring(DATE.Length);
-                                }
-                                else if (line.StartsWith(CONTENT_TYPE))
-                                {
-                                    contentType = line.Substring(CONTENT_TYPE.Length);
-                                }
-                                else if (line.StartsWith(CONTENT_TRANSFER_ENCODING))
-                                {
-                                    contentTransferEncoding = line.Substring(CONTENT_TRANSFER_ENCODING.Length);
-                                }
-                                else
-                                {
-                                    data.AppendLine(line);
-                                }
-
+                                allLines.AppendLine(line);
                                 line = reader.ReadLine();
                             }
 
-                            String message = data.ToString();
+                            if (OutputToFile)
+                            {
+                                string fullBody = allLines.ToString();
+                                ASCIIEncoding encoding = new ASCIIEncoding();
+                                Byte[] fullBodyBytes = encoding.GetBytes(fullBody);
+                                Message mm = new Message(fullBodyBytes);
 
-                            WriteMessage(from, to, subject, message, contentType, contentTransferEncoding);
+                                var path = SettingsHelper.GetStringOrDefault("MailOutputPath");
+                                var fileName = $"{DateTime.Now.ToString("yyyyMMdd-HHmmss")}-{mm.Headers.Subject}.eml";
+                                foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+                                {
+                                    fileName = fileName.Replace(c, '_');
+                                }
 
+                                var fi = new FileInfo(Path.Combine(path, fileName));
+
+                                mm.Save(fi);
+                            }
                             writer.WriteLine("250 OK");
                             break;
 
@@ -150,9 +178,10 @@ namespace SmtpServer
                     }
                 }
             }
-            catch (IOException)
+            catch (IOException ex)
             {
                 Console.WriteLine("Connection lost.");
+                Console.WriteLine(ex);
             }
             catch (Exception ex)
             {
@@ -162,60 +191,6 @@ namespace SmtpServer
             {
                 client.Close();
                 Stop();
-            }
-        }
-
-        /// <summary>
-        /// Decodes the quoted printable.
-        /// </summary>
-        /// <param name="input">The input.</param>
-        /// <returns></returns>
-        private string DecodeQuotedPrintable(string input)
-        {
-            var occurences = new Regex(@"(=[0-9A-Z][0-9A-Z])+", RegexOptions.Multiline);
-            var matches = occurences.Matches(input);
-            foreach (Match m in matches)
-            {
-                byte[] bytes = new byte[m.Value.Length / 3];
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    string hex = m.Value.Substring(i * 3 + 1, 2);
-                    int iHex = Convert.ToInt32(hex, 16);
-                    bytes[i] = Convert.ToByte(iHex);
-                }
-                input = input.Replace(m.Value, Encoding.Default.GetString(bytes));
-            }
-            return input.Replace("=\r\n", "");
-        }
-
-        /// <summary>
-        /// Writes the message.
-        /// </summary>
-        /// <param name="from">From.</param>
-        /// <param name="to">To.</param>
-        /// <param name="subject">The subject.</param>
-        /// <param name="message">The message.</param>
-        /// <param name="contentType">Type of the content.</param>
-        /// <param name="transferEncoding">The transfer encoding.</param>
-        private void WriteMessage(string from, string to, string subject, string message, string contentType, string transferEncoding)
-        {
-            if (transferEncoding == "quoted-printable")
-            {
-                message = DecodeQuotedPrintable(message);
-            }
-
-            if (OutputToFile)
-            {
-                string header = string.Format("<strong>FROM: </strong>{0}<br/><strong>TO: </strong>{1}<br/><strong>SUBJECT: </strong>{2}<br/><strong>TYPE: </strong>{3}<br/><strong>ENCODING: </strong>{4}<br/><br/>",
-                    new object[] { from, to, subject, contentType, transferEncoding });
-                string docText = string.Format("<html><body>{0}{1}</body></html>", header, message);
-
-                // Create a file to write to.
-                string path = string.Format("mail_{0}.html", DateTime.Now.ToFileTimeUtc());
-                using (StreamWriter sw = File.CreateText(path))
-                {
-                    sw.Write(docText);
-                }
             }
         }
 

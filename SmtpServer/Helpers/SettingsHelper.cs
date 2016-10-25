@@ -9,7 +9,7 @@ namespace SmtpServer.Helpers
 {
     public static class SettingsHelper
     {
-        public static int GetIntOrDefault(string key, int defaultValue)
+        public static int GetIntOrDefault(String key, int defaultValue = default(int))
         {
             int value;
             if (!int.TryParse(ConfigurationManager.AppSettings[key], out value))
@@ -18,6 +18,10 @@ namespace SmtpServer.Helpers
             }
 
             return value;
+        }
+        public static String GetStringOrDefault(String key, String defaultValue = "")
+        {
+            return ConfigurationManager.AppSettings[key] ?? defaultValue;
         }
     }
 }
